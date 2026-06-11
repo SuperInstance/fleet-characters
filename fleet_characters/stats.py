@@ -24,6 +24,9 @@ class StatName(Enum):
 
 @dataclass
 class Stats:
+    MAX_STAT: float = 50.0  # Hard cap — no stat goes above this
+    MIN_STAT: float = 3.0   # Floor — stats can't drop below viable minimum
+
     perception: float = 10.0
     dexterity: float = 10.0
     intelligence: float = 10.0
@@ -78,9 +81,17 @@ class Stats:
                 StatName.CONSTITUTION: self.constitution}[name]
 
     def grow(self, name: StatName, amount: float = 0.5):
-        """Grow a specific stat. Diminishing returns above 20."""
+        """Grow a specific stat. Diminishing returns above 20. Clamped to [MIN_STAT, MAX_STAT].
+        
+        Negative amounts are treated as a no-op (stats only grow or stay;
+        decay happens through stat decay, not direct negative growth).
+        """
+        if amount <= 0:
+            return  # Stats only grow — no decay through grow()
         current = self.get(name)
-        # Sigmoid-like growth: harder to increase as stat gets higher
+        if current >= Stats.MAX_STAT:
+            return  # Already at max — no more growth
+        # Diminishing returns: harder to increase as stat gets higher
         if current < 20:
             multiplier = 1.0
         elif current < 30:
@@ -90,7 +101,8 @@ class Stats:
         else:
             multiplier = 0.1
         delta = amount * multiplier
-        setattr(self, name.value, current + delta)
+        new_val = min(current + delta, Stats.MAX_STAT)
+        setattr(self, name.value, new_val)
 
     def strengths(self, threshold: float = 15.0) -> List[Tuple[StatName, float]]:
         """Stats above the threshold — this agent's strengths."""

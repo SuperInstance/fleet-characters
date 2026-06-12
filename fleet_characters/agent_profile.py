@@ -230,3 +230,84 @@ class AgentCharacter:
             'dream': self.dream.to_dict(),
             'tick': self.tick,
         }
+
+    def save_to(self, store: Any):
+        """Save this character to a CharacterStore.
+
+        Uses lazy import to avoid circular dependencies.
+
+        Args:
+            store: A fleet_characters.db.CharacterStore instance
+        """
+        return store.save(self)
+
+    def clone(self, new_name: str = None) -> 'AgentCharacter':
+        """Create a copy of this character with optional new name.
+
+        Useful for spawning child agents that inherit the parent's
+        stat profile without sharing mutable state.
+        """
+        import copy
+        child = copy.deepcopy(self)
+        if new_name:
+            child.agent_name = new_name
+        return child
+
+
+# ─── Class-level helpers (not methods on AgentCharacter) ──────────────
+
+def assemble_agent_from_dict(data: dict) -> AgentCharacter:
+    """Reconstruct an AgentCharacter from a dictionary (as loaded from DB).
+
+    Handles reconstruction of Stats, CharacterArc, DreamCycle, etc.
+    from the flattened dict format returned by CharacterStore.load().
+
+    Usage:
+        data = store.load("chord-master", "chord")
+        agent = assemble_agent_from_dict(data)
+    """
+    if data is None:
+        return None
+
+    agent = AgentCharacter(
+        agent_name=data['name'],
+        domain=data['domain'],
+    )
+
+    # Restore level/xp
+    agent.level = data.get('level', 1)
+    agent.xp = data.get('xp', 0)
+    agent.xp_to_next = data.get('xp_to_next', 10)
+    agent.total_requests = data.get('total_requests', 0)
+    agent.success_streak = data.get('success_streak', 0)
+    agent.fail_streak = data.get('fail_streak', 0)
+    agent.best_streak = data.get('best_streak', 0)
+    agent.worst_slump = data.get('worst_slump', 0)
+    agent.tick = data.get('tick', 0)
+
+    # Restore stats
+    stats_data = data.get('stats', {})
+    agent.stats.perception = stats_data.get('perception', 10.0)
+    agent.stats.dexterity = stats_data.get('dexterity', 10.0)
+    agent.stats.intelligence = stats_data.get('intelligence', 10.0)
+    agent.stats.wisdom = stats_data.get('wisdom', 10.0)
+    agent.stats.charisma = stats_data.get('charisma', 10.0)
+    agent.stats.constitution = stats_data.get('constitution', 10.0)
+
+    # Restore class
+    from .class_ import CharacterClass, AGENT_DEFAULT_CLASSES
+    class_name = data.get('class', 'UNDEFINED')
+    for cls in CharacterClass:
+        if cls.name == class_name:
+            agent.current_class = cls
+            break
+
+    # Restore class trajectory
+    class_traj = data.get('class_trajectory', [])
+    for name in class_traj:
+        for cls in CharacterClass:
+            if cls.name == name:
+                agent.class_progression.trajectory.append(cls)
+                break
+
+    return agent
